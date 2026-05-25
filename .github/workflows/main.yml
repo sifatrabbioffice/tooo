@@ -3,95 +3,100 @@ name: iOS GTA5 Clone Build and Compile
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch: # এর মাধ্যমে আপনি গিটহাব থেকে ম্যানুয়ালিও বিল্ড রান করতে পারবেন
+  workflow_dispatch: 
 
 jobs:
   build-ios:
-    runs-on: macos-latest # অ্যাপল কম্পিলেশনের জন্য অফিসিয়াল ম্যাক ওএস রানার
+    runs-on: macos-latest
 
     steps:
-      # ১. রিপোজিটরির কোড এবং স্ক্রিপ্ট ডাউনলোড/চেকআউট করা
+      # ১. রিপোজিটরির কোড রানারে ডাউনলোড করা
       - name: Checkout Repository Code
         uses: actions/checkout@v4
 
-      # ২. নোড এবং অন্যান্য প্রয়োজনীয় ডিপেন্ডেন্সি সেটআপ (যদি কাস্টম স্ক্রিপ্ট বা টুলস থাকে)
-      - name: Setup Node.js (for toolings if any)
-        uses: actions/setup-node@v4
-        with:
-          node-size: 20
+      # ২. যদি কোনো ফাইল জিপ (.zip) অবস্থায় থাকে, তবে তা আনজিপ করা
+      - name: Auto Unzip Project Files (If zipped)
+        run: |
+          echo "Checking for any zipped project files..."
+          find . -name "*.zip" -exec unzip -o {} \; || true
+          echo "Current directory contents:"
+          ls -R
 
-      # ৩. এক্সকোড (Xcode) সিলেক্ট করা যা macOS-এ বিল্ট-ইন থাকে
+      # ৩. এক্সকোড (Xcode) রানার সিলেক্ট করা
       - name: Force Select Xcode Version
         run: |
           sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
           xcodebuild -version
-      # ৪. ইউনিটি বা কাস্টম কম্পাইলার ডিপেন্ডেন্সি ইনস্টল (Cocoapods ইনস্টলেশন)
+
+      # ৪. কোকোয়াপডস (Cocoapods) এবং ডিপেন্ডেন্সি ইনস্টল
       - name: Install Cocoapods and Build Dependencies
         run: |
           sudo gem install cocoapods
-          # যদি আপনার প্রোজেক্টে থার্ডপার্টি লাইব্রেরি বা প্লাগইন থাকে
-          if [ -f "Podfile" ]; then pod install; fi 
-      # ৫. প্রোজেক্ট অপ্টিমাইজেশন ও কোড জেনারেট (Unity CLI বিল্ড পার্ট - অপশনাল)
-      # নোট: যদি আপনি সরাসরি ইউনিটি এক্সপোর্ট করা এক্সকোড প্রজেক্ট রিপোজিটরিতে রাখেন, তবে এই ধাপ স্কিপ হবে।
-      # আর যদি গিটহাবেই ইউনিটি বিল্ড করতে চান, তবে ইউনিটি লাইসেন্স লাগে। তাই সাধারণত এক্সকোড প্রজেক্ট পুশ করাই বেস্ট।
+          PODFILE_PATH=$(find . -name "Podfile" -print -quit)
+          if [ ! -z "$PODFILE_PATH" ]; then
+            cd "$(dirname "$PODFILE_PATH")"
+            pod install
+            cd -
+          fi
 
-      # ৬. ডামি/সেলফ-সাইন্ড কোড সাইনিং প্রিপারেশন (সিলিং/সাইডলোডের জন্য জরুরি)
-      - name: Prepare Code Signing for Sideloading
-        run: |
-          # সাইডলোডের জন্য অ্যাপল আইডি ছাড়াই যেন বিল্ড করা যায়, তার জন্য সেটিংস চেঞ্জ করা
-          sed -i '' 's/CODE_SIGNING_ALLOWED = YES/CODE_SIGNING_ALLOWED = NO/g' *.xcodeproj/project.pbxproj || true
-          sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' *.xcodeproj/project.pbxproj || true
-      # ৭. মূল প্রোজেক্ট কম্পাইল এবং বিল্ড করা (Mach-O ARM64 আর্কিটেকচার)
-      # ৭. ডাইনামিকালি প্রোজেক্টের নাম খুঁজে বের করা এবং কম্পাইল করা
-      # ৭. গভীরভাবে প্রোজেক্টের নাম খুঁজে বের করা এবং কম্পাইল করা
+      # ৫. গভীরভাবে প্রোজেক্টের নাম খুঁজে বের করা এবং কম্পাইল করা
       - name: Compile and Build Archive (.xcarchive)
         run: |
-          # পুরো রিপোজিটরির যেকোনো জায়গায় .xcodeproj ফাইল আছে কিনা তা গভীরভাবে খোঁজা
+          # পুরো রানারের সব ফোল্ডার চেক করে .xcodeproj ফাইলের পাথ বের করা
           PROJECT_PATH=$(find . -name "*.xcodeproj" -print -quit)
           
           if [ -z "$PROJECT_PATH" ]; then
-            echo "❌ Error: কোন .xcodeproj ফাইল খুঁজে পাওয়া যায়নি! দয়া করে চেক করুন আপনার রেপোতে ফাইলটি সঠিক জায়গায় আছে কিনা।"
+            echo "❌ Error: কোন .xcodeproj ফাইল বা ফোল্ডার খুঁজে পাওয়া যায়নি!"
+            echo "অনুগ্রহ করে নিশ্চিত করুন যে আপনার Unity iOS Build-এর ফাইলগুলো সরাসরি GitHub-এ আপলোড করা হয়েছে।"
             exit 1
           fi
           
-          echo "Found Project Path: $PROJECT_PATH"
+          echo "✅ Found Project Path: $PROJECT_PATH"
           
-          # পাথ থেকে ফাইলের নাম এবং স্কিম বের করা
+          # প্রজেক্ট ফাইলের মূল ডিরেক্টরিতে যাওয়া
+          PROJECT_DIR=$(dirname "$PROJECT_PATH")
           PROJECT_FILE=$(basename "$PROJECT_PATH")
+          
+          echo "Project Directory: $PROJECT_DIR"
           echo "Project File Name: $PROJECT_FILE"
+          
+          # কোড সাইনিং বাইপাস করা (সিলিং/সাইডলোডের জন্য)
+          sed -i '' 's/CODE_SIGNING_ALLOWED = YES/CODE_SIGNING_ALLOWED = NO/g' "$PROJECT_PATH/project.pbxproj" || true
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' "$PROJECT_PATH/project.pbxproj" || true
 
-          # আর্কাইভ ডিরেক্টরি তৈরি
-          mkdir -p build
+          # বিল্ড আউটপুট ডিরেক্টরি তৈরি
+          mkdir -p $GITHUB_WORKSPACE/build
 
-          # মূল কম্পাইলেশন কমান্ড (প্রোজেক্টের ফুল পাথ ব্যবহার করা হয়েছে)
+          # মূল কম্পাইলেশন কমান্ড (Unity-iPhone স্কিম দিয়ে বিল্ড হবে)
           xcodebuild archive \
             -project "$PROJECT_PATH" \
             -scheme "Unity-iPhone" \
             -configuration Release \
             -sdk iphoneos \
-            -archivePath "build/GTA5Clone.xcarchive" \
+            -archivePath "$GITHUB_WORKSPACE/build/GTA5Clone.xcarchive" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
 
-      # ৮. কম্পাইলড ফাইলকে .ipa ফরম্যাটে কনভার্ট করা
+      # ৬. কম্পাইলড ফাইলকে .ipa ফরম্যাটে কনভার্ট করা
       - name: Export Archive to IPA Package
         run: |
-          mkdir -p build/Payload
+          mkdir -p $GITHUB_WORKSPACE/build/Payload
           
-          # আর্কাইভ ঠিকঠাক তৈরি হয়েছে কিনা তা চেক করা
-          if [ -d "build/GTA5Clone.xcarchive/Products/Applications" ]; then
-            cp -r build/GTA5Clone.xcarchive/Products/Applications/*.app build/Payload/
-            cd build
+          # আর্কাইভ ঠিকঠak তৈরি হয়েছে কিনা চেক করে .app ফাইল কপি করা
+          if [ -d "$GITHUB_WORKSPACE/build/GTA5Clone.xcarchive/Products/Applications" ]; then
+            cp -r $GITHUB_WORKSPACE/build/GTA5Clone.xcarchive/Products/Applications/*.app $GITHUB_WORKSPACE/build/Payload/
+            cd $GITHUB_WORKSPACE/build
             zip -r GTA5Clone.ipa Payload
-            echo "✅ IPA generation completed successfully!"
+            echo "✅ IPA package successfully generated!"
           else
             echo "❌ Error: Archive build failed, no .app file found!"
             exit 1
           fi
-      # ৯. তৈরি হওয়া .ipa ফাইলটি গিটহাবে আপলোড করা (যাতে আপনি ডাউনলোড করতে পারেন)
+
+      # ৭. তৈরি হওয়া .ipa ফাইলটি গিটহাবে আপলোড করা
       - name: Upload Output IPA Artifact
         uses: actions/upload-artifact@v4
         with:
           name: GTA5-iOS-Sideload-IPA
           path: build/GTA5Clone.ipa
-          retention-days: 7 # গিটহাবে ফাইলটি ৭ দিন থাকবে ডাউনলোড করার জন্য
+          retention-days: 7
