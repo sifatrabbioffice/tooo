@@ -1,65 +1,77 @@
-name: iOS CI Build (Unity to Mach-O IPA)
+name: iOS GTA5 Clone Build and Compile
 
 on:
   push:
-    branches: [ main ] # আপনার মেইন ব্রাঞ্চে পুশ করলে বিল্ড শুরু হবে
-  workflow_dispatch: # ম্যানুয়ালি বিল্ড স্টার্ট করার জন্য
+    branches: [ "main" ]
+  workflow_dispatch: # এর মাধ্যমে আপনি গিটহাব থেকে ম্যানুয়ালিও বিল্ড রান করতে পারবেন
 
 jobs:
-  buildForiOS:
-    name: Build Unity Project for iOS 🍏
-    runs-on: macos-13 # অ্যাপলের Mach-O এবং Xcode কম্পাইল করার জন্য macOS রানার
+  build-ios:
+    runs-on: macos-latest # অ্যাপল কম্পিলেশনের জন্য অফিসিয়াল ম্যাক ওএস রানার
 
     steps:
-    # ১. রিপোজিটরি থেকে কোড ডাউনলোড করা
-    - name: Checkout Repository
-      uses: actions/checkout@v4
-      with:
-        lfs: true # বড় থ্রিডি মডেল বা টেক্সচার থাকলে Git LFS অন রাখা ভালো
+      # ১. রিপোজিটরির কোড এবং স্ক্রিপ্ট ডাউনলোড/চেকআউট করা
+      - name: Checkout Repository Code
+        uses: actions/checkout@v4
 
-    # ২. ইউনিটি লাইব্রেরি ক্যাশ করা (যাতে প্রতিবার বিল্ডে বেশি সময় না লাগে)
-    - name: Cache Unity Library
-      uses: actions/cache@v3
-      with:
-        path: Library
-        key: Library-iOS-${{ hashFiles('ProjectSettings/ProjectVersion.txt') }}
-        restore-keys: |
-          Library-iOS-
+      # ২. নোড এবং অন্যান্য প্রয়োজনীয় ডিপেন্ডেন্সি সেটআপ (যদি কাস্টম স্ক্রিপ্ট বা টুলস থাকে)
+      - name: Setup Node.js (for toolings if any)
+        uses: actions/setup-node@v4
+        with:
+          node-size: 20
 
-    # ৩. স্বয়ংক্রিয়ভাবে Unity Engine ডাউনলোড ও ইনস্টল করা
-    - name: Install Unity Editor
-      uses: game-ci/unity-builder@v4
-      env:
-        UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }} # ইউনিটি লাইসেন্স কি
-      with:
-        targetPlatform: iOS
-        # আপনার প্রজেক্টের Unity ভার্সনটি নিচে দিন (যেমন: 2022.3.Xf1)
-        # unityVersion: auto 
+      # ৩. এক্সকোড (Xcode) সিলেক্ট করা যা macOS-এ বিল্ট-ইন থাকে
+      - name: Force Select Xcode Version
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
 
-    # ৪. ইউনিটি প্রজেক্টকে Xcode প্রজেক্টে কম্পাইল/বিল্ড করা
-    - name: Build Unity to Xcode Project
-      uses: game-ci/unity-builder@v4
-      env:
-        UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-      with:
-        targetPlatform: iOS
-        buildMethod: UnityEditor.BuildPlayerWindow.BuildPlayer
+      # ৪. ইউনিটি বা কাস্টম কম্পাইলার ডিপেন্ডেন্সি ইনস্টল (Cocoapods ইনস্টলেশন)
+      - name: Install Cocoapods and Build Dependencies
+        run: |
+          sudo gem install cocoapods
+          # যদি আপনার প্রোজেক্টে থার্ডপার্টি লাইব্রেরি বা প্লাগইন থাকে
+          if [ -f "Podfile" ]; then pod install; fi 
 
-    # ৫. Xcode দিয়ে Mach-O বাইনারি এবং IPA তৈরি করা (সিমুলেটর/সাইডলোড উপযোগী)
-    - name: Compile Xcode to IPA
-      run: |
-        cd build/iOS
-        xcodebuild -workspace Unity-iPhone.xcworkspace -scheme Unity-iPhone -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO clean build
-        
-        # তৈরি হওয়া অ্যাপকে IPA ফরম্যাটে কনভার্ট করা
-        mkdir -p Payload
-        mv build/Release-iphoneos/Unity-iPhone.app Payload/
-        zip -r GTA5_Clone_iOS.ipa Payload
-        
-    # ৬. তৈরি হওয়া .ipa ফাইলটি ডাউনলোড করার জন্য আপলোড করা
-    - name: Upload Finished IPA Artifact
-      uses: actions/artifacts@v4
-      with:
-        name: iOS-MachO-Game-Build
-        path: build/iOS/GTA5_Clone_iOS.ipa
-        
+      # ৫. প্রোজেক্ট অপ্টিমাইজেশন ও কোড জেনারেট (Unity CLI বিল্ড পার্ট - অপশনাল)
+      # নোট: যদি আপনি সরাসরি ইউনিটি এক্সপোর্ট করা এক্সকোড প্রজেক্ট রিপোজিটরিতে রাখেন, তবে এই ধাপ স্কিপ হবে।
+      # আর যদি গিটহাবেই ইউনিটি বিল্ড করতে চান, তবে ইউনিটি লাইসেন্স লাগে। তাই সাধারণত এক্সকোড প্রজেক্ট পুশ করাই বেস্ট।
+
+      # ৬. ডামি/সেলফ-সাইন্ড কোড সাইনিং প্রিপারেশন (সিলিং/সাইডলোডের জন্য জরুরি)
+      - name: Prepare Code Signing for Sideloading
+        run: |
+          # সাইডলোডের জন্য অ্যাপল আইডি ছাড়াই যেন বিল্ড করা যায়, তার জন্য সেটিংস চেঞ্জ করা
+          sed -i '' 's/CODE_SIGNING_ALLOWED = YES/CODE_SIGNING_ALLOWED = NO/g' *.xcodeproj/project.pbxproj || true
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' *.xcodeproj/project.pbxproj || true
+
+      # ৭. মূল প্রোজেক্ট কম্পাইল এবং বিল্ড করা (Mach-O ARM64 আর্কিটেকচার)
+      - name: Compile and Build Archive (.xcarchive)
+        run: |
+          # এখানে "YourProjectName" এর জায়গায় আপনার আসল এক্সকোড প্রজেক্টের নাম হবে
+          xcodebuild archive \
+            -project *.xcodeproj \
+            -scheme "Unity-iPhone" \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath $補/build/GTA5Clone.xcarchive \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      # ৮. কম্পাইলড ফাইলকে .ipa (Mach-O Binary) ফরম্যাটে কনভার্ট/এক্সপোর্ট করা
+      - name: Export Archive to IPA Package
+        run: |
+          mkdir -p build/Payload
+          # আর্কাইভ থেকে কম্পাইলড অ্যাপ বাইনারি কপি করা
+          cp -r build/GTA5Clone.xcarchive/Products/Applications/*.app build/Payload/
+          cd build
+          # পেলোড ফোল্ডারটিকে জিপ করে .ipa বানানো (যা সাইডলোড করা যায়)
+          zip -r GTA5Clone.ipa Payload
+          echo "IPA generation completed successfully!"
+
+      # ৯. তৈরি হওয়া .ipa ফাইলটি গিটহাবে আপলোড করা (যাতে আপনি ডাউনলোড করতে পারেন)
+      - name: Upload Output IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GTA5-iOS-Sideload-IPA
+          path: build/GTA5Clone.ipa
+          retention-days: 7 # গিটহাবে ফাইলটি ৭ দিন থাকবে ডাউনলোড করার জন্য
