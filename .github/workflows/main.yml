@@ -1,4 +1,48 @@
-# ৭. ডাইনামিকালি প্রোজেক্টের নাম খুঁজে বের করা এবং কম্পাইল করা
+name: iOS GTA5 Clone Build and Compile
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch: # এর মাধ্যমে আপনি গিটহাব থেকে ম্যানুয়ালিও বিল্ড রান করতে পারবেন
+
+jobs:
+  build-ios:
+    runs-on: macos-latest # অ্যাপল কম্পিলেশনের জন্য অফিসিয়াল ম্যাক ওএস রানার
+
+    steps:
+      # ১. রিপোজিটরির কোড এবং স্ক্রিপ্ট ডাউনলোড/চেকআউট করা
+      - name: Checkout Repository Code
+        uses: actions/checkout@v4
+
+      # ২. নোড এবং অন্যান্য প্রয়োজনীয় ডিপেন্ডেন্সি সেটআপ (যদি কাস্টম স্ক্রিপ্ট বা টুলস থাকে)
+      - name: Setup Node.js (for toolings if any)
+        uses: actions/setup-node@v4
+        with:
+          node-size: 20
+
+      # ৩. এক্সকোড (Xcode) সিলেক্ট করা যা macOS-এ বিল্ট-ইন থাকে
+      - name: Force Select Xcode Version
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+      # ৪. ইউনিটি বা কাস্টম কম্পাইলার ডিপেন্ডেন্সি ইনস্টল (Cocoapods ইনস্টলেশন)
+      - name: Install Cocoapods and Build Dependencies
+        run: |
+          sudo gem install cocoapods
+          # যদি আপনার প্রোজেক্টে থার্ডপার্টি লাইব্রেরি বা প্লাগইন থাকে
+          if [ -f "Podfile" ]; then pod install; fi 
+      # ৫. প্রোজেক্ট অপ্টিমাইজেশন ও কোড জেনারেট (Unity CLI বিল্ড পার্ট - অপশনাল)
+      # নোট: যদি আপনি সরাসরি ইউনিটি এক্সপোর্ট করা এক্সকোড প্রজেক্ট রিপোজিটরিতে রাখেন, তবে এই ধাপ স্কিপ হবে।
+      # আর যদি গিটহাবেই ইউনিটি বিল্ড করতে চান, তবে ইউনিটি লাইসেন্স লাগে। তাই সাধারণত এক্সকোড প্রজেক্ট পুশ করাই বেস্ট।
+
+      # ৬. ডামি/সেলফ-সাইন্ড কোড সাইনিং প্রিপারেশন (সিলিং/সাইডলোডের জন্য জরুরি)
+      - name: Prepare Code Signing for Sideloading
+        run: |
+          # সাইডলোডের জন্য অ্যাপল আইডি ছাড়াই যেন বিল্ড করা যায়, তার জন্য সেটিংস চেঞ্জ করা
+          sed -i '' 's/CODE_SIGNING_ALLOWED = YES/CODE_SIGNING_ALLOWED = NO/g' *.xcodeproj/project.pbxproj || true
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' *.xcodeproj/project.pbxproj || true
+      # ৭. মূল প্রোজেক্ট কম্পাইল এবং বিল্ড করা (Mach-O ARM64 আর্কিটেকচার)
+      # ৭. ডাইনামিকালি প্রোজেক্টের নাম খুঁজে বের করা এবং কম্পাইল করা
       - name: Compile and Build Archive (.xcarchive)
         run: |
           # রানারের ডিরেক্টরিতে থাকা .xcodeproj ফাইলের আসল নামটি খুঁজে বের করা
@@ -37,3 +81,10 @@
             echo "Error: Archive build failed, no .app file found!"
             exit 1
           fi
+      # ৯. তৈরি হওয়া .ipa ফাইলটি গিটহাবে আপলোড করা (যাতে আপনি ডাউনলোড করতে পারেন)
+      - name: Upload Output IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GTA5-iOS-Sideload-IPA
+          path: build/GTA5Clone.ipa
+          retention-days: 7 # গিটহাবে ফাইলটি ৭ দিন থাকবে ডাউনলোড করার জন্য
