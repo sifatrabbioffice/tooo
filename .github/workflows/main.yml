@@ -43,22 +43,29 @@ jobs:
           sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' *.xcodeproj/project.pbxproj || true
       # ৭. মূল প্রোজেক্ট কম্পাইল এবং বিল্ড করা (Mach-O ARM64 আর্কিটেকচার)
       # ৭. ডাইনামিকালি প্রোজেক্টের নাম খুঁজে বের করা এবং কম্পাইল করা
+      # ৭. গভীরভাবে প্রোজেক্টের নাম খুঁজে বের করা এবং কম্পাইল করা
       - name: Compile and Build Archive (.xcarchive)
         run: |
-          # রানারের ডিরেক্টরিতে থাকা .xcodeproj ফাইলের আসল নামটি খুঁজে বের করা
-          PROJECT_FILE=$(basename $(find . -name "*.xcodeproj" -maxdepth 2 | head -n 1))
-          echo "Found Project: $PROJECT_FILE"
+          # পুরো রিপোজিটরির যেকোনো জায়গায় .xcodeproj ফাইল আছে কিনা তা গভীরভাবে খোঁজা
+          PROJECT_PATH=$(find . -name "*.xcodeproj" -print -quit)
           
-          # এক্সকোড প্রজেক্টের নাম থেকে এক্সটেনশন বাদ দিয়ে স্কিম নেম বের করা
-          SCHEME_NAME=$(basename "$PROJECT_FILE" .xcodeproj)
-          echo "Using Scheme: $SCHEME_NAME"
+          if [ -z "$PROJECT_PATH" ]; then
+            echo "❌ Error: কোন .xcodeproj ফাইল খুঁজে পাওয়া যায়নি! দয়া করে চেক করুন আপনার রেপোতে ফাইলটি সঠিক জায়গায় আছে কিনা।"
+            exit 1
+          fi
+          
+          echo "Found Project Path: $PROJECT_PATH"
+          
+          # পাথ থেকে ফাইলের নাম এবং স্কিম বের করা
+          PROJECT_FILE=$(basename "$PROJECT_PATH")
+          echo "Project File Name: $PROJECT_FILE"
 
           # আর্কাইভ ডিরেক্টরি তৈরি
           mkdir -p build
 
-          # মূল কম্পাইলেশন কমান্ড
+          # মূল কম্পাইলেশন কমান্ড (প্রোজেক্টের ফুল পাথ ব্যবহার করা হয়েছে)
           xcodebuild archive \
-            -project "$PROJECT_FILE" \
+            -project "$PROJECT_PATH" \
             -scheme "Unity-iPhone" \
             -configuration Release \
             -sdk iphoneos \
@@ -71,14 +78,14 @@ jobs:
         run: |
           mkdir -p build/Payload
           
-          # আর্কাইভ তৈরি হয়েছে কিনা চেক করা এবং ফাইল কপি করা
+          # আর্কাইভ ঠিকঠাক তৈরি হয়েছে কিনা তা চেক করা
           if [ -d "build/GTA5Clone.xcarchive/Products/Applications" ]; then
             cp -r build/GTA5Clone.xcarchive/Products/Applications/*.app build/Payload/
             cd build
             zip -r GTA5Clone.ipa Payload
-            echo "IPA generation completed successfully!"
+            echo "✅ IPA generation completed successfully!"
           else
-            echo "Error: Archive build failed, no .app file found!"
+            echo "❌ Error: Archive build failed, no .app file found!"
             exit 1
           fi
       # ৯. তৈরি হওয়া .ipa ফাইলটি গিটহাবে আপলোড করা (যাতে আপনি ডাউনলোড করতে পারেন)
