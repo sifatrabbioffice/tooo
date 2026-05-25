@@ -1,0 +1,65 @@
+name: iOS CI Build (Unity to Mach-O IPA)
+
+on:
+  push:
+    branches: [ main ] # আপনার মেইন ব্রাঞ্চে পুশ করলে বিল্ড শুরু হবে
+  workflow_dispatch: # ম্যানুয়ালি বিল্ড স্টার্ট করার জন্য
+
+jobs:
+  buildForiOS:
+    name: Build Unity Project for iOS 🍏
+    runs-on: macos-13 # অ্যাপলের Mach-O এবং Xcode কম্পাইল করার জন্য macOS রানার
+
+    steps:
+    # ১. রিপোজিটরি থেকে কোড ডাউনলোড করা
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        lfs: true # বড় থ্রিডি মডেল বা টেক্সচার থাকলে Git LFS অন রাখা ভালো
+
+    # ২. ইউনিটি লাইব্রেরি ক্যাশ করা (যাতে প্রতিবার বিল্ডে বেশি সময় না লাগে)
+    - name: Cache Unity Library
+      uses: actions/cache@v3
+      with:
+        path: Library
+        key: Library-iOS-${{ hashFiles('ProjectSettings/ProjectVersion.txt') }}
+        restore-keys: |
+          Library-iOS-
+
+    # ৩. স্বয়ংক্রিয়ভাবে Unity Engine ডাউনলোড ও ইনস্টল করা
+    - name: Install Unity Editor
+      uses: game-ci/unity-builder@v4
+      env:
+        UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }} # ইউনিটি লাইসেন্স কি
+      with:
+        targetPlatform: iOS
+        # আপনার প্রজেক্টের Unity ভার্সনটি নিচে দিন (যেমন: 2022.3.Xf1)
+        # unityVersion: auto 
+
+    # ৪. ইউনিটি প্রজেক্টকে Xcode প্রজেক্টে কম্পাইল/বিল্ড করা
+    - name: Build Unity to Xcode Project
+      uses: game-ci/unity-builder@v4
+      env:
+        UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+      with:
+        targetPlatform: iOS
+        buildMethod: UnityEditor.BuildPlayerWindow.BuildPlayer
+
+    # ৫. Xcode দিয়ে Mach-O বাইনারি এবং IPA তৈরি করা (সিমুলেটর/সাইডলোড উপযোগী)
+    - name: Compile Xcode to IPA
+      run: |
+        cd build/iOS
+        xcodebuild -workspace Unity-iPhone.xcworkspace -scheme Unity-iPhone -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO clean build
+        
+        # তৈরি হওয়া অ্যাপকে IPA ফরম্যাটে কনভার্ট করা
+        mkdir -p Payload
+        mv build/Release-iphoneos/Unity-iPhone.app Payload/
+        zip -r GTA5_Clone_iOS.ipa Payload
+        
+    # ৬. তৈরি হওয়া .ipa ফাইলটি ডাউনলোড করার জন্য আপলোড করা
+    - name: Upload Finished IPA Artifact
+      uses: actions/artifacts@v4
+      with:
+        name: iOS-MachO-Game-Build
+        path: build/iOS/GTA5_Clone_iOS.ipa
+        
